@@ -99,7 +99,10 @@ type options struct {
 	upstream       string
 	upstreamParsed *url.URL
 
-	maxConcurrency                  int
+	upstreamGraphQL       string
+	upstreamGraphQLParsed *url.URL
+
+	maxConcurrency int
 	requestThrottlingTime           uint
 	requestThrottlingTimeV4         uint
 	requestThrottlingTimeForGET     uint
@@ -134,6 +137,12 @@ func (o *options) validate() error {
 		return fmt.Errorf("failed to parse upstream URL: %w", err)
 	}
 	o.upstreamParsed = upstreamURL
+
+	upstreamGraphQLURL, err := url.Parse(o.upstreamGraphQL)
+	if err != nil {
+		return fmt.Errorf("failed to parse upstream GraphQL URL: %v", err)
+	}
+	o.upstreamGraphQLParsed = upstreamGraphQLURL
 	return nil
 }
 
@@ -145,6 +154,7 @@ func flagOptions() *options {
 	flag.StringVar(&o.redisAddress, "redis-address", "", "Redis address if using a redis cache e.g. localhost:6379.")
 	flag.IntVar(&o.port, "port", 8888, "Port to listen on.")
 	flag.StringVar(&o.upstream, "upstream", "https://api.github.com", "Scheme, host, and base path of reverse proxy upstream.")
+	flag.StringVar(&o.upstreamGraphQL, "upstream-graphql", "https://api.github.com", "Scheme, host, and base path of reverse proxy upstream for GraphQL.")
 	flag.IntVar(&o.maxConcurrency, "concurrency", 25, "Maximum number of concurrent in-flight requests to GitHub.")
 	flag.UintVar(&o.requestThrottlingTime, "throttling-time-ms", 0, "Additional throttling mechanism which imposes time spacing between outgoing requests. Counted per organization. Has to be set together with --get-throttling-time-ms.")
 	flag.UintVar(&o.requestThrottlingTimeV4, "throttling-time-v4-ms", 0, "Additional throttling mechanism which imposes time spacing between outgoing requests. Counted per organization. Overrides --throttling-time-ms setting for API v4.")
@@ -210,7 +220,11 @@ func proxy(o *options, upstreamTransport http.RoundTripper, diskCachePruneInterv
 		go diskMonitor(o.pushGatewayInterval, o.dir)
 	}
 
-	return newReverseProxy(o.upstreamParsed, cache, time.Duration(o.timeout)*time.Second)
+	mux := http.NewServeMux()
+	mux.Handle("/", newReverseProxy(o.upstreamParsed, cache, time.Duration(o.timeout)*time.Second))
+	mux.Handle("/graphql", newReverseProxy(o.upstreamGraphQLParsed, cache, time.Duration(o.timeout)*time.Second))
+
+	return mux
 }
 
 func newReverseProxy(upstreamURL *url.URL, transport http.RoundTripper, timeout time.Duration) http.Handler {
