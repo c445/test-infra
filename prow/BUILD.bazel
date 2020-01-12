@@ -126,6 +126,7 @@ filegroup(
         "//prow/deck/jobs:all-srcs",
         "//prow/entrypoint:all-srcs",
         "//prow/external-plugins/cherrypicker:all-srcs",
+        "//prow/external-plugins/mention:all-srcs",
         "//prow/external-plugins/needs-rebase:all-srcs",
         "//prow/external-plugins/refresh:all-srcs",
         "//prow/flagutil:all-srcs",
