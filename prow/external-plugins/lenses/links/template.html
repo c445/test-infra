@@ -1,0 +1,28 @@
+{{define "header"}}
+    <link rel="stylesheet" href="links.css">
+    <script type="text/javascript" src="script_bundle.min.js"></script>
+{{end}}
+{{define "body"}}
+    <table class="mdl-data-table mdl-js-data-table metadata-table" id="data-table">
+        <tbody>
+        {{range $key, $value := .Data}}
+            <tr>
+                <td class="mdl-data-table__cell--non-numeric">{{$value.Name}}</td>
+                <td class="mdl-data-table__cell--non-numeric">{{$value.Data}}</td>
+            </tr>
+        {{end}}
+        {{range $key, $value := .Links}}
+            <tr>
+                <td class="mdl-data-table__cell--non-numeric">{{$value.Name}}</td>
+                <td class="mdl-data-table__cell--non-numeric">
+                    {{range $key, $link := $value.Links}}
+                        <a href="{{$link.URL}}" target="_blank" style="padding-left:15px;">
+                            {{$link.Text}}
+                            <i class="material-icons" style="font-size: 1em; vertical-align: middle; padding-left: 3px;">open_in_new</i>
+                        </a>
+                    {{end}}
+                </td>
+            </tr>
+        {{end}}
+    </table>
+{{end}}

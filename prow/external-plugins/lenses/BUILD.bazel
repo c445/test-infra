@@ -1,0 +1,82 @@
+package(default_visibility = ["//visibility:public"])
+
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_docker//container:image.bzl", "container_image")
+load("@npm_bazel_typescript//:index.bzl", "ts_library")
+load("//prow:def.bzl", "prow_image")
+
+NAME = "lenses"
+
+prow_image(
+    name = "image",
+    base = ":lenses",
+    component = NAME,
+    visibility = ["//visibility:public"],
+)
+
+container_image(
+    name = "lenses",
+    base = "@git-base//image",
+    data_path = "/prow/external-plugins/lenses",
+    directory = "/lenses",
+    files = [
+        ":resources",
+        ":templates",
+    ],
+)
+
+filegroup(
+    name = "templates",
+    srcs = [
+        "//prow/external-plugins/lenses/links:template",
+    ],
+)
+
+filegroup(
+    name = "resources",
+    srcs = [
+        "//prow/external-plugins/lenses/links:resources",
+    ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [
+        ":package-srcs",
+        "//prow/external-plugins/lenses/links:all-srcs",
+    ],
+    tags = ["automanaged"],
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "go_default_library",
+    srcs = ["main.go"],
+    importpath = "k8s.io/test-infra/prow/external-plugins/lenses",
+    deps = [
+        "//pkg/flagutil:go_default_library",
+        "//prow/apis/prowjobs/v1:go_default_library",
+        "//prow/config:go_default_library",
+        "//prow/deck/jobs:go_default_library",
+        "//prow/external-plugins/lenses/links:go_default_library",
+        "//prow/flagutil:go_default_library",
+        "//prow/interrupts:go_default_library",
+        "//prow/io:go_default_library",
+        "//prow/kube:go_default_library",
+        "//prow/spyglass:go_default_library",
+        "//prow/spyglass/lenses:go_default_library",
+        "//prow/spyglass/lenses/common:go_default_library",
+        "@com_github_sirupsen_logrus//:go_default_library",
+        "@io_k8s_api//core/v1:go_default_library",
+        "@io_k8s_client_go//kubernetes/typed/core/v1:go_default_library",
+        "@io_k8s_sigs_controller_runtime//pkg/client:go_default_library",
+        "@io_k8s_sigs_controller_runtime//pkg/manager:go_default_library",
+    ],
+)
