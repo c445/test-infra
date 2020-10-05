@@ -18,6 +18,7 @@ go_library(
         "//prow/plugins/cla:go_default_library",
         "//prow/plugins/dco:go_default_library",
         "//prow/plugins/dog:go_default_library",
+        "//prow/plugins/golangci-lint:go_default_library",
         "//prow/plugins/golint:go_default_library",
         "//prow/plugins/goose:go_default_library",
         "//prow/plugins/heart:go_default_library",

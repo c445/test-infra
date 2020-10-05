@@ -85,6 +85,7 @@ filegroup(
         "//prow/plugins/cla:all-srcs",
         "//prow/plugins/dco:all-srcs",
         "//prow/plugins/dog:all-srcs",
+        "//prow/plugins/golangci-lint:all-srcs",
         "//prow/plugins/golint:all-srcs",
         "//prow/plugins/goose:all-srcs",
         "//prow/plugins/heart:all-srcs",
