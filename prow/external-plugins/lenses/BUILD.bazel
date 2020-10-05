@@ -69,7 +69,6 @@ go_library(
         "//prow/flagutil:go_default_library",
         "//prow/interrupts:go_default_library",
         "//prow/io:go_default_library",
-        "//prow/kube:go_default_library",
         "//prow/spyglass:go_default_library",
         "//prow/spyglass/lenses:go_default_library",
         "//prow/spyglass/lenses/common:go_default_library",
