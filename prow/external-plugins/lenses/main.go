@@ -25,29 +25,23 @@ import (
 	"os"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	coreapi "k8s.io/api/core/v1"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-
-	"k8s.io/test-infra/prow/kube"
-
-	"k8s.io/test-infra/prow/external-plugins/lenses/links"
-	"k8s.io/test-infra/prow/spyglass/lenses"
-
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
+	"k8s.io/test-infra/pkg/flagutil"
 	prowapi "k8s.io/test-infra/prow/apis/prowjobs/v1"
 	"k8s.io/test-infra/prow/config"
 	"k8s.io/test-infra/prow/deck/jobs"
+	"k8s.io/test-infra/prow/external-plugins/lenses/links"
+	prowflagutil "k8s.io/test-infra/prow/flagutil"
 	"k8s.io/test-infra/prow/interrupts"
 	"k8s.io/test-infra/prow/io"
 	"k8s.io/test-infra/prow/spyglass"
+	"k8s.io/test-infra/prow/spyglass/lenses"
 	"k8s.io/test-infra/prow/spyglass/lenses/common"
-
-	"github.com/sirupsen/logrus"
-
-	"k8s.io/test-infra/pkg/flagutil"
-	prowflagutil "k8s.io/test-infra/prow/flagutil"
 )
 
 type options struct {
@@ -127,7 +121,7 @@ func main() {
 		logrus.WithError(err).Fatal("Error getting manager.")
 	}
 	// Force a cache for ProwJobs
-	if _, err := mgr.GetCache().GetInformer(&prowapi.ProwJob{}); err != nil {
+	if _, err := mgr.GetCache().GetInformer(context.TODO(), &prowapi.ProwJob{}); err != nil {
 		logrus.WithError(err).Fatal("Failed to get prowjob informer")
 	}
 	go func() {
@@ -163,7 +157,7 @@ func main() {
 		},
 	}
 
-	lensServer, err := common.NewLensServer(spyglassLocalLensListenerAddr, ja, spyglass.NewStorageArtifactFetcher(opener, false), spyglass.NewPodLogArtifactFetcher(ja), configAgent.Config, localLenses)
+	lensServer, err := common.NewLensServer(spyglassLocalLensListenerAddr, ja, spyglass.NewStorageArtifactFetcher(opener, configAgent.Config, false), spyglass.NewPodLogArtifactFetcher(ja), configAgent.Config, localLenses)
 	if err != nil {
 		logrus.Fatalf("Failed to start lens server: %v", err)
 	}
@@ -177,8 +171,8 @@ type podLogClient struct {
 	client corev1.PodInterface
 }
 
-func (c *podLogClient) GetLogs(name string) ([]byte, error) {
-	reader, err := c.client.GetLogs(name, &coreapi.PodLogOptions{Container: kube.TestContainerName}).Stream()
+func (c *podLogClient) GetLogs(name, container string) ([]byte, error) {
+	reader, err := c.client.GetLogs(name, &coreapi.PodLogOptions{Container: container}).Stream(context.TODO())
 	if err != nil {
 		return nil, err
 	}
