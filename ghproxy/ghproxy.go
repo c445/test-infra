@@ -83,6 +83,9 @@ type options struct {
 	upstream       string
 	upstreamParsed *url.URL
 
+	upstreamGraphQL       string
+	upstreamGraphQLParsed *url.URL
+
 	maxConcurrency int
 
 	// pushGateway fields are used to configure pushing prometheus metrics.
@@ -111,6 +114,12 @@ func (o *options) validate() error {
 		return fmt.Errorf("failed to parse upstream URL: %v", err)
 	}
 	o.upstreamParsed = upstreamURL
+
+	upstreamGraphQLURL, err := url.Parse(o.upstreamGraphQL)
+	if err != nil {
+		return fmt.Errorf("failed to parse upstream GraphQL URL: %v", err)
+	}
+	o.upstreamGraphQLParsed = upstreamGraphQLURL
 	return nil
 }
 
@@ -122,6 +131,7 @@ func flagOptions() *options {
 	flag.StringVar(&o.redisAddress, "redis-address", "", "Redis address if using a redis cache e.g. localhost:6379.")
 	flag.IntVar(&o.port, "port", 8888, "Port to listen on.")
 	flag.StringVar(&o.upstream, "upstream", "https://api.github.com", "Scheme, host, and base path of reverse proxy upstream.")
+	flag.StringVar(&o.upstreamGraphQL, "upstream-graphql", "https://api.github.com", "Scheme, host, and base path of reverse proxy upstream for GraphQL.")
 	flag.IntVar(&o.maxConcurrency, "concurrency", 25, "Maximum number of concurrent in-flight requests to GitHub.")
 	flag.StringVar(&o.pushGateway, "push-gateway", "", "If specified, push prometheus metrics to this endpoint.")
 	flag.DurationVar(&o.pushGatewayInterval, "push-gateway-interval", time.Minute, "Interval at which prometheus metrics are pushed.")
@@ -164,8 +174,10 @@ func main() {
 		ServeMetrics: o.serveMetrics,
 	}, o.instrumentationOptions.MetricsPort)
 
-	proxy := newReverseProxy(o.upstreamParsed, cache, 30*time.Second)
-	server := &http.Server{Addr: ":" + strconv.Itoa(o.port), Handler: proxy}
+	mux := http.NewServeMux()
+	mux.Handle("/", newReverseProxy(o.upstreamParsed, cache, 30*time.Second))
+	mux.Handle("/graphql", newReverseProxy(o.upstreamGraphQLParsed, cache, 30*time.Second))
+	server := &http.Server{Addr: ":" + strconv.Itoa(o.port), Handler: mux}
 
 	health := pjutil.NewHealthOnPort(o.instrumentationOptions.HealthPort)
 	health.ServeReady()

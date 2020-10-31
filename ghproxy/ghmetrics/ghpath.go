@@ -160,6 +160,7 @@ var simplifier = simplifypath.NewSimplifier(l("", // shadow element mimicing the
 	l("teams"),
 	// end point for gh api v4
 	l("graphql"),
+	l("api", l("graphql")),
 	l("licenses")))
 
 // l and v keep the tree legible
