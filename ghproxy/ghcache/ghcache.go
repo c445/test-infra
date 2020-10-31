@@ -49,6 +49,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/semaphore"
+
 	"k8s.io/test-infra/ghproxy/ghmetrics"
 )
 
@@ -211,7 +212,7 @@ func (u upstreamTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	}
 
 	apiVersion := "v3"
-	if strings.HasPrefix(req.URL.Path, "graphql") || strings.HasPrefix(req.URL.Path, "/graphql") {
+	if strings.HasPrefix(req.URL.Path, "graphql") || strings.HasPrefix(req.URL.Path, "/graphql") || strings.Contains(req.URL.Path, "/graphql") {
 		resp.Header.Set("Cache-Control", "no-store")
 		apiVersion = "v4"
 	}
