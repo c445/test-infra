@@ -105,6 +105,8 @@ type options struct {
 	requestThrottlingTimeForGET     uint
 	requestThrottlingMaxDelayTime   uint
 	requestThrottlingMaxDelayTimeV4 uint
+	upstreamGraphQL                 string
+	upstreamGraphQLParsed           *url.URL
 
 	// pushGateway fields are used to configure pushing prometheus metrics.
 	pushGateway         string
@@ -134,6 +136,12 @@ func (o *options) validate() error {
 		return fmt.Errorf("failed to parse upstream URL: %w", err)
 	}
 	o.upstreamParsed = upstreamURL
+
+	upstreamGraphQLURL, err := url.Parse(o.upstreamGraphQL)
+	if err != nil {
+		return fmt.Errorf("failed to parse upstream GraphQL URL: %v", err)
+	}
+	o.upstreamGraphQLParsed = upstreamGraphQLURL
 	return nil
 }
 
@@ -145,6 +153,7 @@ func flagOptions() *options {
 	flag.StringVar(&o.redisAddress, "redis-address", "", "Redis address if using a redis cache e.g. localhost:6379.")
 	flag.IntVar(&o.port, "port", 8888, "Port to listen on.")
 	flag.StringVar(&o.upstream, "upstream", "https://api.github.com", "Scheme, host, and base path of reverse proxy upstream.")
+	flag.StringVar(&o.upstreamGraphQL, "upstream-graphql", "https://api.github.com", "Scheme, host, and base path of reverse proxy upstream for GraphQL.")
 	flag.IntVar(&o.maxConcurrency, "concurrency", 25, "Maximum number of concurrent in-flight requests to GitHub.")
 	flag.UintVar(&o.requestThrottlingTime, "throttling-time-ms", 0, "Additional throttling mechanism which imposes time spacing between outgoing requests. Counted per organization. Has to be set together with --get-throttling-time-ms.")
 	flag.UintVar(&o.requestThrottlingTimeV4, "throttling-time-v4-ms", 0, "Additional throttling mechanism which imposes time spacing between outgoing requests. Counted per organization. Overrides --throttling-time-ms setting for API v4.")
@@ -190,7 +199,10 @@ func main() {
 	}, o.instrumentationOptions.MetricsPort)
 
 	proxy := proxy(o, http.DefaultTransport, time.Hour)
-	server := &http.Server{Addr: ":" + strconv.Itoa(o.port), Handler: proxy}
+	mux := http.NewServeMux()
+	mux.Handle("/", proxy)
+	mux.Handle("/graphql", proxy)
+	server := &http.Server{Addr: ":" + strconv.Itoa(o.port), Handler: mux}
 
 	health := pjutil.NewHealthOnPort(o.instrumentationOptions.HealthPort)
 	health.ServeReady()
