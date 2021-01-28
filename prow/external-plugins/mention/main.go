@@ -39,6 +39,7 @@ import (
 	"k8s.io/test-infra/prow/interrupts"
 	"k8s.io/test-infra/prow/pluginhelp/externalplugins"
 	"k8s.io/test-infra/prow/plugins"
+	"k8s.io/test-infra/prow/plugins/ownersconfig"
 	"k8s.io/test-infra/prow/repoowners"
 )
 
@@ -135,7 +136,10 @@ func main() {
 	ownersDirBlacklist := func() config.OwnersDirBlacklist {
 		return configAgent.Config().OwnersDirBlacklist
 	}
-	ownersClient := repoowners.NewClient(git.ClientFactoryFrom(gitClient), githubClient, mdYAMLEnabled, skipCollaborators, ownersDirBlacklist)
+	resolver := func(org, repo string) ownersconfig.Filenames {
+		return pluginAgent.Config().OwnersFilenames(org, repo)
+	}
+	ownersClient := repoowners.NewClient(git.ClientFactoryFrom(gitClient), githubClient, mdYAMLEnabled, skipCollaborators, ownersDirBlacklist, resolver)
 
 	server := &Server{
 		GitHubClient:   githubClient,
