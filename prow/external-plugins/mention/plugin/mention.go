@@ -57,7 +57,7 @@ type githubClient interface {
 	GetPullRequestChanges(org, repo string, number int) ([]github.PullRequestChange, error)
 	DeleteComment(org, repo string, ID int) error
 	CreateComment(org, repo string, number int, comment string) error
-	BotName() (string, error)
+	BotUserChecker() (func(candidate string) bool, error)
 	ListIssueComments(org, repo string, number int) ([]github.IssueComment, error)
 }
 
@@ -106,7 +106,7 @@ func updateMentionComment(ghc githubClient, log *logrus.Entry, pre *github.PullR
 		return fmt.Errorf("failed to get %s for %s#%d: %v", context, pre.Repo.FullName, pre.PullRequest.Number, err)
 	}
 
-	botName, err := ghc.BotName()
+	botUserChecker, err := ghc.BotUserChecker()
 	if err != nil {
 		return fetchErr("bot name", err)
 	}
@@ -116,7 +116,7 @@ func updateMentionComment(ghc githubClient, log *logrus.Entry, pre *github.PullR
 	}
 	commentsFromIssueComments := commentsFromIssueComments(issueComments)
 
-	notifications := filterComments(commentsFromIssueComments, notificationMatcher(botName))
+	notifications := filterComments(commentsFromIssueComments, notificationMatcher(botUserChecker))
 	latestNotification := getLast(notifications)
 	newMessage := updateNotification(neededLabels, pre.Repo.Owner.Login, latestNotification)
 	if newMessage != nil {
@@ -147,9 +147,9 @@ func updateNotification(neededLabels sets.String, org string, latestNotification
 	return &message
 }
 
-func notificationMatcher(botName string) func(*comment) bool {
+func notificationMatcher(isBot func(string) bool) func(*comment) bool {
 	return func(c *comment) bool {
-		if c.Author != botName {
+		if !isBot(c.Author) {
 			return false
 		}
 		match := notificationRegex.FindStringSubmatch(c.Body)
