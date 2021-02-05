@@ -33,6 +33,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+
 	"k8s.io/test-infra/prow/pod-utils/wrapper"
 )
 
@@ -89,6 +90,23 @@ func (o Options) Run() int {
 	return code
 }
 
+type writer struct {
+	io.Writer
+}
+
+func (w writer) Write(b []byte) (int, error) {
+	n, err := w.Writer.Write(append([]byte(time.Now().Format("15:04:05Z07:00 "))))
+	if err != nil {
+		return n, fmt.Errorf("error writing timestamp: %v", err)
+	}
+
+	n, err = w.Writer.Write(b)
+	if err != nil {
+		return n, fmt.Errorf("error writing: %v", err)
+	}
+	return n, nil
+}
+
 // ExecuteProcess creates the artifact directory then executes the process as
 // configured, writing the output to the process log.
 func (o Options) ExecuteProcess() (int, error) {
@@ -103,7 +121,7 @@ func (o Options) ExecuteProcess() (int, error) {
 	}
 	defer processLogFile.Close()
 
-	output := io.MultiWriter(os.Stdout, processLogFile)
+	output := writer{Writer: io.MultiWriter(os.Stdout, processLogFile)}
 	logrus.SetOutput(output)
 	defer logrus.SetOutput(os.Stdout)
 
