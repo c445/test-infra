@@ -22,6 +22,7 @@ import (
 	"path"
 
 	"github.com/sirupsen/logrus"
+
 	"k8s.io/test-infra/prow/entrypoint"
 	"k8s.io/test-infra/prow/logrusutil"
 	"k8s.io/test-infra/prow/pod-utils/options"
