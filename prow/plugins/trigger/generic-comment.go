@@ -24,6 +24,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/util/sets"
+
 	"k8s.io/test-infra/prow/config"
 	"k8s.io/test-infra/prow/github"
 	"k8s.io/test-infra/prow/labels"
@@ -227,7 +228,11 @@ func availablePresubmits(githubClient GitHubClient, body, org, repo, branch stri
 	}
 	var runWithTriggerNames []string
 	for _, ps := range runWithTrigger {
-		runWithTriggerNames = append(runWithTriggerNames, ps.RerunCommand)
+		s := ps.RerunCommand
+		if ps.Trigger != "" {
+			s += fmt.Sprintf(" (regex: %s)", ps.Trigger)
+		}
+		runWithTriggerNames = append(runWithTriggerNames, s)
 	}
 
 	return runWithTestAllNames, runWithTriggerNames, nil
