@@ -23,6 +23,7 @@ import (
 	"k8s.io/test-infra/prow/kube"
 
 	"k8s.io/apimachinery/pkg/util/sets"
+
 	"k8s.io/test-infra/prow/config"
 	"k8s.io/test-infra/prow/github"
 	"k8s.io/test-infra/prow/labels"
@@ -215,6 +216,42 @@ func FilterPresubmits(honorOkToTest bool, gitHubClient GitHubClient, body string
 	number, branch := pr.Number, pr.Base.Ref
 	changes := config.NewGitHubDeferredChangedFilesProvider(gitHubClient, org, repo, number)
 	return pjutil.FilterPresubmits(filter, changes, branch, presubmits, logger)
+}
+
+// availablePresubmits returns 2 sets of presubmits:
+// 1. presubmits that can be run with '/test all' command.
+// 2. presubmits that can be run with their trigger, e.g. '/test job'
+func availablePresubmits(githubClient GitHubClient, body, org, repo, branch string, number int, presubmits []config.Presubmit, logger *logrus.Entry) ([]string, []string, error) {
+	changes := config.NewGitHubDeferredChangedFilesProvider(githubClient, org, repo, number)
+
+	runWithTestAll, err := pjutil.FilterPresubmits(pjutil.NewTestAllFilter(), changes, branch, presubmits, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var triggerFilters []pjutil.Filter
+	for _, ps := range presubmits {
+		triggerFilters = append(triggerFilters, pjutil.NewCommandFilter(ps.RerunCommand))
+	}
+	runWithTrigger, err := pjutil.FilterPresubmits(pjutil.NewAggregateFilter(triggerFilters), changes, branch, presubmits, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var runWithTestAllNames []string
+	for _, ps := range runWithTestAll {
+		runWithTestAllNames = append(runWithTestAllNames, ps.Name)
+	}
+	var runWithTriggerNames []string
+	for _, ps := range runWithTrigger {
+		s := ps.RerunCommand
+		if ps.Trigger != "" {
+			s += fmt.Sprintf(" (regex: %s)", ps.Trigger)
+		}
+		runWithTriggerNames = append(runWithTriggerNames, s)
+	}
+
+	return runWithTestAllNames, runWithTriggerNames, nil
 }
 
 func getContexts(combinedStatus *github.CombinedStatus) (sets.Set[string], sets.Set[string]) {
