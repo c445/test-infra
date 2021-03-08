@@ -24,9 +24,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/url"
@@ -36,6 +38,8 @@ import (
 	"text/template"
 	"time"
 
+	github2 "github.com/google/go-github/github"
+	"golang.org/x/oauth2"
 	"k8s.io/test-infra/prow/config/secret"
 	"k8s.io/test-infra/prow/flagutil"
 	"k8s.io/test-infra/prow/github"
@@ -118,25 +122,25 @@ func parseHTMLURL(url string) (string, string, int, error) {
 	return mat[1], mat[2], n, nil
 }
 
-func makeQuery(queries string, includeArchived, includeClosed bool, minUpdated time.Duration) (string, error) {
+func makeQuery(queries string, includeArchived, includeClosed bool, minUpdated time.Duration) ([]string, error) {
 	parts := []string{}
 	for _, query := range strings.Split(queries, querySeparator) {
 		part := []string{query}
 		if !includeArchived {
 			if strings.Contains(query, "archived:true") {
-				return "", errors.New("archived:true requires --include-archived")
+				return []string{}, errors.New("archived:true requires --include-archived")
 			}
 			part = append(part, "archived:false")
 		} else if strings.Contains(query, "archived:false") {
-			return "", errors.New("archived:false conflicts with --include-archived")
+			return []string{}, errors.New("archived:false conflicts with --include-archived")
 		}
 		if !includeClosed {
 			if strings.Contains(query, "is:closed") {
-				return "", errors.New("is:closed requires --include-closed")
+				return []string{}, errors.New("is:closed requires --include-closed")
 			}
 			part = append(part, "is:open")
 		} else if strings.Contains(query, "is:open") {
-			return "", errors.New("is:open conflicts with --include-closed")
+			return []string{}, errors.New("is:open conflicts with --include-closed")
 		}
 		if minUpdated != 0 {
 			latest := time.Now().Add(-minUpdated)
@@ -144,7 +148,7 @@ func makeQuery(queries string, includeArchived, includeClosed bool, minUpdated t
 		}
 		parts = append(parts, strings.Join(part, " "))
 	}
-	return strings.Join(parts, querySeparator), nil
+	return parts, nil
 }
 
 type client interface {
@@ -186,6 +190,12 @@ func main() {
 		c = github.NewDryRunClient(secretAgent.GetTokenGenerator(o.token), secretAgent.Censor, o.graphqlEndpoint, o.endpoint.Strings()...)
 	}
 
+	ctx := context.Background()
+	githubClient, err := createGithubClient(ctx, o.endpoint, o.token)
+	if err != nil {
+		log.Fatalf("Failed creating Github client: %v", err)
+	}
+
 	query, err := makeQuery(o.query, o.includeArchived, o.includeClosed, o.updated)
 	if err != nil {
 		log.Fatalf("Bad query %q: %v", o.query, err)
@@ -197,9 +207,20 @@ func main() {
 		asc = true
 	}
 	commenter := makeCommenter(o.comment, o.useTemplate)
-	if err := run(c, query, sort, asc, o.random, commenter, o.ceiling, o.labelsUpdated); err != nil {
+	if err := run(ctx, c, githubClient, query, sort, asc, o.random, commenter, o.ceiling, o.labelsUpdated); err != nil {
 		log.Fatalf("Failed run: %v", err)
 	}
+}
+
+func createGithubClient(ctx context.Context, endpoint flagutil.Strings, tokenPath string) (*github2.Client, error) {
+	log.Print("Create Github client")
+	token, err := ioutil.ReadFile(tokenPath)
+	if err != nil {
+		log.Fatalf("Failed reading token: %v", err)
+	}
+	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: string(token)})
+	tc := oauth2.NewClient(ctx, ts)
+	return github2.NewEnterpriseClient(endpoint.String(), "", tc)
 }
 
 func makeCommenter(comment string, useTemplate bool) func(meta) (string, error) {
@@ -216,9 +237,59 @@ func makeCommenter(comment string, useTemplate bool) func(meta) (string, error) 
 	}
 }
 
-func run(c client, queries, sort string, asc, random bool, commenter func(meta) (string, error), ceiling int, labelsUpdated time.Duration) error {
+func getLastValidLabelsUpdate(ctx context.Context, client *github2.Client, issue github.Issue, goodLabels map[string]bool, badLabels map[string]bool) (time.Time, error) {
+	org, repo, number, err := parseHTMLURL(issue.HTMLURL)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("error parsing HTML of PR %d: %v", issue.ID, err)
+	}
+	readyDate := time.Time{}
+	var foundLabel bool
+	for i := 1; true; i++ {
+		prTimeline, _, err := client.Issues.ListIssueTimeline(ctx, org, repo, number, &github2.ListOptions{PerPage: 100, Page: i})
+		if err != nil {
+			return time.Time{}, fmt.Errorf("could not get PR timeline PR %d in repo %s/%s: %v", issue.ID, org, repo, err)
+		}
+		// break loop if there is no timeline entry in PR
+		if len(prTimeline) == 0 {
+			break
+		}
+		// loop all events, search for labels and check the create date for good labels
+		for _, v := range prTimeline {
+			if v.Label != nil && *v.Event == "labeled" && goodLabels[*v.Label.Name] && v.CreatedAt.After(readyDate) {
+				readyDate = *v.CreatedAt
+				foundLabel = true
+			}
+		}
+		// if a label were found, loop all events again, search for labels and check the create date for bad labels
+		if foundLabel {
+			for _, v := range prTimeline {
+				if v.Label != nil && *v.Event == "unlabeled" && badLabels[*v.Label.Name] && v.CreatedAt.Before(readyDate) {
+					readyDate = *v.CreatedAt
+				}
+			}
+		}
+	}
+	if !foundLabel {
+		readyDate = time.Now()
+	}
+	return readyDate, nil
+}
+
+func extractLabels(query, labelsPrefix string) map[string]bool {
+	output := map[string]bool{}
+	for _, q := range strings.Split(query, " ") {
+		if strings.HasPrefix(q, labelsPrefix + ":") {
+			label := strings.Split(q, ":")[1]
+			output[label] = true
+		}
+	}
+	return output
+}
+
+func run(ctx context.Context, c client, gh *github2.Client, queries []string, sort string, asc, random bool, commenter func(meta) (string, error), ceiling int, labelsUpdated time.Duration) error {
 	var issues []github.Issue
-	for _, query := range strings.Split(queries, querySeparator) {
+	issuesBool := map[int]bool{}
+	for _, query := range queries {
 		log.Printf("Searching: %s", query)
 		foundIssues, err := c.FindIssues(query, sort, asc)
 		if err != nil {
@@ -226,17 +297,20 @@ func run(c client, queries, sort string, asc, random bool, commenter func(meta) 
 		}
 		for _, foundIssue := range foundIssues {
 			var alreadyInIssues bool
-			for _, issue := range issues {
-				if foundIssue.ID == issue.ID {
+			if ok := issuesBool[foundIssue.ID]; ok {
 					alreadyInIssues = true
 					break
-				}
 			}
 			if !alreadyInIssues {
-				if labelsUpdated != 0 && time.Now().Add(-labelsUpdated).Before(foundIssue.UpdatedAt) {
+				reviewTimeOver, err := getLastValidLabelsUpdate(ctx, gh, foundIssue, extractLabels(query, "label"), extractLabels(query, "-label"))
+				if err != nil {
+					return fmt.Errorf("failed checking last label update time for issue %d: %v", foundIssue.ID, err)
+				}
+				if labelsUpdated != 0 && time.Now().Add(-labelsUpdated).Before(reviewTimeOver) {
 					continue
 				}
 				issues = append(issues, foundIssue)
+				issuesBool[foundIssue.ID] = true
 			}
 		}
 	}
