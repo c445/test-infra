@@ -55,14 +55,16 @@ const (
 		.Issue.Assignees - list of assigned .Users
 		.Issue.Labels - list of applied labels (.Name)
 `
+	querySeparator = ","
 )
 
 func flagOptions() options {
 	o := options{
 		endpoint: flagutil.NewStrings(github.DefaultAPIEndpoint),
 	}
-	flag.StringVar(&o.query, "query", "", "See https://help.github.com/articles/searching-issues-and-pull-requests/")
-	flag.DurationVar(&o.updated, "updated", 2*time.Hour, "Filter to issues unmodified for at least this long if set")
+	flag.StringVar(&o.query, "query", "", "See https://help.github.com/articles/searching-issues-and-pull-requests/ (can be comma-separated)")
+	flag.DurationVar(&o.updated, "updated", time.Duration(0), "Filter to issues unmodified for at least this long if set")
+	flag.DurationVar(&o.labelsUpdated, "labels-updated", time.Duration(0), "Labels of issues unmodified for at least this long if set")
 	flag.BoolVar(&o.includeArchived, "include-archived", false, "Match archived issues if set")
 	flag.BoolVar(&o.includeClosed, "include-closed", false, "Match closed issues if set")
 	flag.BoolVar(&o.confirm, "confirm", false, "Mutate github if set")
@@ -97,6 +99,7 @@ type options struct {
 	graphqlEndpoint string
 	token           string
 	updated         time.Duration
+	labelsUpdated   time.Duration
 	confirm         bool
 	random          bool
 }
@@ -115,29 +118,33 @@ func parseHTMLURL(url string) (string, string, int, error) {
 	return mat[1], mat[2], n, nil
 }
 
-func makeQuery(query string, includeArchived, includeClosed bool, minUpdated time.Duration) (string, error) {
-	parts := []string{query}
-	if !includeArchived {
-		if strings.Contains(query, "archived:true") {
-			return "", errors.New("archived:true requires --include-archived")
+func makeQuery(queries string, includeArchived, includeClosed bool, minUpdated time.Duration) (string, error) {
+	parts := []string{}
+	for _, query := range strings.Split(queries, querySeparator) {
+		part := []string{query}
+		if !includeArchived {
+			if strings.Contains(query, "archived:true") {
+				return "", errors.New("archived:true requires --include-archived")
+			}
+			part = append(part, "archived:false")
+		} else if strings.Contains(query, "archived:false") {
+			return "", errors.New("archived:false conflicts with --include-archived")
 		}
-		parts = append(parts, "archived:false")
-	} else if strings.Contains(query, "archived:false") {
-		return "", errors.New("archived:false conflicts with --include-archived")
-	}
-	if !includeClosed {
-		if strings.Contains(query, "is:closed") {
-			return "", errors.New("is:closed requires --include-closed")
+		if !includeClosed {
+			if strings.Contains(query, "is:closed") {
+				return "", errors.New("is:closed requires --include-closed")
+			}
+			part = append(part, "is:open")
+		} else if strings.Contains(query, "is:open") {
+			return "", errors.New("is:open conflicts with --include-closed")
 		}
-		parts = append(parts, "is:open")
-	} else if strings.Contains(query, "is:open") {
-		return "", errors.New("is:open conflicts with --include-closed")
+		if minUpdated != 0 {
+			latest := time.Now().Add(-minUpdated)
+			part = append(part, "updated:<="+latest.Format(time.RFC3339))
+		}
+		parts = append(parts, strings.Join(part, " "))
 	}
-	if minUpdated != 0 {
-		latest := time.Now().Add(-minUpdated)
-		parts = append(parts, "updated:<="+latest.Format(time.RFC3339))
-	}
-	return strings.Join(parts, " "), nil
+	return strings.Join(parts, querySeparator), nil
 }
 
 type client interface {
@@ -190,7 +197,7 @@ func main() {
 		asc = true
 	}
 	commenter := makeCommenter(o.comment, o.useTemplate)
-	if err := run(c, query, sort, asc, o.random, commenter, o.ceiling); err != nil {
+	if err := run(c, query, sort, asc, o.random, commenter, o.ceiling, o.labelsUpdated); err != nil {
 		log.Fatalf("Failed run: %v", err)
 	}
 }
@@ -209,13 +216,31 @@ func makeCommenter(comment string, useTemplate bool) func(meta) (string, error) 
 	}
 }
 
-func run(c client, query, sort string, asc, random bool, commenter func(meta) (string, error), ceiling int) error {
-	log.Printf("Searching: %s", query)
-	issues, err := c.FindIssues(query, sort, asc)
-	if err != nil {
-		return fmt.Errorf("search failed: %v", err)
+func run(c client, queries, sort string, asc, random bool, commenter func(meta) (string, error), ceiling int, labelsUpdated time.Duration) error {
+	var issues []github.Issue
+	for _, query := range strings.Split(queries, querySeparator) {
+		log.Printf("Searching: %s", query)
+		foundIssues, err := c.FindIssues(query, sort, asc)
+		if err != nil {
+			return fmt.Errorf("search failed: %v", err)
+		}
+		for _, foundIssue := range foundIssues {
+			var alreadyInIssues bool
+			for _, issue := range issues {
+				if foundIssue.ID == issue.ID {
+					alreadyInIssues = true
+					break
+				}
+			}
+			if !alreadyInIssues {
+				if labelsUpdated != 0 && time.Now().Add(-labelsUpdated).Before(foundIssue.UpdatedAt) {
+					continue
+				}
+				issues = append(issues, foundIssue)
+			}
+		}
 	}
-	problems := []string{}
+	var problems []string
 	log.Printf("Found %d matches", len(issues))
 	if random {
 		dest := make([]github.Issue, len(issues))
