@@ -66,7 +66,7 @@ func flagOptions() options {
 	o := options{
 		endpoint: flagutil.NewStrings(github.DefaultAPIEndpoint),
 	}
-	flag.StringVar(&o.query, "query", "", "See https://help.github.com/articles/searching-issues-and-pull-requests/ (can be comma-separated)")
+	flag.StringVar(&o.query, "query", "", "Comma-separated list of queries, see https://help.github.com/articles/searching-issues-and-pull-requests/")
 	flag.DurationVar(&o.updated, "updated", time.Duration(0), "Filter to issues unmodified for at least this long if set")
 	flag.DurationVar(&o.labelsUpdated, "labels-updated", time.Duration(0), "Labels of issues unmodified for at least this long if set")
 	flag.BoolVar(&o.includeArchived, "include-archived", false, "Match archived issues if set")
@@ -237,58 +237,9 @@ func makeCommenter(comment string, useTemplate bool) func(meta) (string, error) 
 	}
 }
 
-func getLastValidLabelsUpdate(ctx context.Context, client *github2.Client, issue github.Issue, goodLabels map[string]bool, badLabels map[string]bool) (time.Time, error) {
-	org, repo, number, err := parseHTMLURL(issue.HTMLURL)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("error parsing HTML of PR %d: %v", issue.ID, err)
-	}
-	readyDate := time.Time{}
-	var foundLabel bool
-	for i := 1; true; i++ {
-		prTimeline, _, err := client.Issues.ListIssueTimeline(ctx, org, repo, number, &github2.ListOptions{PerPage: 100, Page: i})
-		if err != nil {
-			return time.Time{}, fmt.Errorf("could not get PR timeline PR %d in repo %s/%s: %v", issue.ID, org, repo, err)
-		}
-		// break loop if there is no timeline entry in PR
-		if len(prTimeline) == 0 {
-			break
-		}
-		// loop all events, search for labels and check the create date for good labels
-		for _, v := range prTimeline {
-			if v.Label != nil && *v.Event == "labeled" && goodLabels[*v.Label.Name] && v.CreatedAt.After(readyDate) {
-				readyDate = *v.CreatedAt
-				foundLabel = true
-			}
-		}
-		// if a label were found, loop all events again, search for labels and check the create date for bad labels
-		if foundLabel {
-			for _, v := range prTimeline {
-				if v.Label != nil && *v.Event == "unlabeled" && badLabels[*v.Label.Name] && v.CreatedAt.Before(readyDate) {
-					readyDate = *v.CreatedAt
-				}
-			}
-		}
-	}
-	if !foundLabel {
-		readyDate = time.Now()
-	}
-	return readyDate, nil
-}
-
-func extractLabels(query, labelsPrefix string) map[string]bool {
-	output := map[string]bool{}
-	for _, q := range strings.Split(query, " ") {
-		if strings.HasPrefix(q, labelsPrefix + ":") {
-			label := strings.Split(q, ":")[1]
-			output[label] = true
-		}
-	}
-	return output
-}
-
 func run(ctx context.Context, c client, gh *github2.Client, queries []string, sort string, asc, random bool, commenter func(meta) (string, error), ceiling int, labelsUpdated time.Duration) error {
 	var issues []github.Issue
-	issuesBool := map[int]bool{}
+	issueFound := map[int]bool{}
 	for _, query := range queries {
 		log.Printf("Searching: %s", query)
 		foundIssues, err := c.FindIssues(query, sort, asc)
@@ -296,22 +247,22 @@ func run(ctx context.Context, c client, gh *github2.Client, queries []string, so
 			return fmt.Errorf("search failed: %v", err)
 		}
 		for _, foundIssue := range foundIssues {
-			var alreadyInIssues bool
-			if ok := issuesBool[foundIssue.ID]; ok {
-					alreadyInIssues = true
-					break
+			if issueFound[foundIssue.ID] {
+				continue
 			}
-			if !alreadyInIssues {
-				reviewTimeOver, err := getLastValidLabelsUpdate(ctx, gh, foundIssue, extractLabels(query, "label"), extractLabels(query, "-label"))
+			issueFound[foundIssue.ID] = true
+
+			if labelsUpdated != 0 {
+				lastValidLabelsUpdate, err := getLastValidLabelsUpdate(ctx, gh, foundIssue, extractLabels(query, "label"), extractLabels(query, "-label"))
 				if err != nil {
 					return fmt.Errorf("failed checking last label update time for issue %d: %v", foundIssue.ID, err)
 				}
-				if labelsUpdated != 0 && time.Now().Add(-labelsUpdated).Before(reviewTimeOver) {
+				if time.Now().Add(-labelsUpdated).Before(lastValidLabelsUpdate) {
 					continue
 				}
-				issues = append(issues, foundIssue)
-				issuesBool[foundIssue.ID] = true
 			}
+
+			issues = append(issues, foundIssue)
 		}
 	}
 	var problems []string
@@ -355,4 +306,46 @@ func run(ctx context.Context, c client, gh *github2.Client, queries []string, so
 		return fmt.Errorf("encoutered %d failures: %v", len(problems), problems)
 	}
 	return nil
+}
+
+func getLastValidLabelsUpdate(ctx context.Context, client *github2.Client, issue github.Issue, goodLabels map[string]bool, badLabels map[string]bool) (time.Time, error) {
+	org, repo, number, err := parseHTMLURL(issue.HTMLURL)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("error parsing HTML of PR %d: %v", issue.ID, err)
+	}
+	lastLabelDate := time.Time{}
+	for i := 1; true; i++ {
+		issueTimeline, _, err := client.Issues.ListIssueTimeline(ctx, org, repo, number, &github2.ListOptions{PerPage: 100, Page: i})
+		if err != nil {
+			return time.Time{}, fmt.Errorf("could not get PR timeline PR %d in repo %s/%s: %v", issue.ID, org, repo, err)
+		}
+		// break loop if there is no timeline entry in PR
+		if len(issueTimeline) == 0 {
+			break
+		}
+		// loop all events, search for labels and check the create date for good labels
+		for _, v := range issueTimeline {
+			if v.Label != nil && *v.Event == "labeled" && goodLabels[*v.Label.Name] && v.CreatedAt.After(lastLabelDate) {
+				lastLabelDate = *v.CreatedAt
+			}
+		}
+		// if a label were found, loop all events again, search for labels and check the create date for bad labels
+		for _, v := range issueTimeline {
+			if v.Label != nil && *v.Event == "unlabeled" && badLabels[*v.Label.Name] && v.CreatedAt.After(lastLabelDate) {
+				lastLabelDate = *v.CreatedAt
+			}
+		}
+	}
+	return lastLabelDate, nil
+}
+
+func extractLabels(query, labelsPrefix string) map[string]bool {
+	output := map[string]bool{}
+	for _, q := range strings.Split(query, " ") {
+		if strings.HasPrefix(q, labelsPrefix+":") {
+			label := strings.Split(q, ":")[1]
+			output[label] = true
+		}
+	}
+	return output
 }
