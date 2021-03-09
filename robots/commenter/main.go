@@ -239,7 +239,7 @@ func makeCommenter(comment string, useTemplate bool) func(meta) (string, error) 
 
 func run(ctx context.Context, c client, gh *github2.Client, queries []string, sort string, asc, random bool, commenter func(meta) (string, error), ceiling int, labelsUpdated time.Duration) error {
 	var issues []github.Issue
-	issueFound := map[int]bool{}
+	issueAlreadyHandled := map[int]bool{}
 	for _, query := range queries {
 		log.Printf("Searching: %s", query)
 		foundIssues, err := c.FindIssues(query, sort, asc)
@@ -247,10 +247,10 @@ func run(ctx context.Context, c client, gh *github2.Client, queries []string, so
 			return fmt.Errorf("search failed: %v", err)
 		}
 		for _, foundIssue := range foundIssues {
-			if issueFound[foundIssue.ID] {
+			if issueAlreadyHandled[foundIssue.ID] {
 				continue
 			}
-			issueFound[foundIssue.ID] = true
+			issueAlreadyHandled[foundIssue.ID] = true
 
 			if labelsUpdated != 0 {
 				lastValidLabelsUpdate, err := getLastValidLabelsUpdate(ctx, gh, foundIssue, extractLabels(query, "label"), extractLabels(query, "-label"))
@@ -329,7 +329,7 @@ func getLastValidLabelsUpdate(ctx context.Context, client *github2.Client, issue
 				lastLabelDate = *v.CreatedAt
 			}
 		}
-		// if a label were found, loop all events again, search for labels and check the create date for bad labels
+		// loop all events again, search for unlabeling and check the create date for bad labels
 		for _, v := range issueTimeline {
 			if v.Label != nil && *v.Event == "unlabeled" && badLabels[*v.Label.Name] && v.CreatedAt.After(lastLabelDate) {
 				lastLabelDate = *v.CreatedAt
