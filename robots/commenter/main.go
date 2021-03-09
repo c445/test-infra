@@ -214,11 +214,12 @@ func main() {
 
 func createGithubClient(ctx context.Context, endpoint flagutil.Strings, tokenPath string) (*github2.Client, error) {
 	log.Print("Create Github client")
-	token, err := ioutil.ReadFile(tokenPath)
+	tokenByte, err := ioutil.ReadFile(tokenPath)
 	if err != nil {
 		log.Fatalf("Failed reading token: %v", err)
 	}
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: string(token)})
+	token := strings.TrimSuffix(string(tokenByte), "\n")
+	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 	tc := oauth2.NewClient(ctx, ts)
 	return github2.NewEnterpriseClient(endpoint.String(), "", tc)
 }
