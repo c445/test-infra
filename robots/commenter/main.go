@@ -122,33 +122,29 @@ func parseHTMLURL(url string) (string, string, int, error) {
 	return mat[1], mat[2], n, nil
 }
 
-func makeQuery(queries string, includeArchived, includeClosed bool, minUpdated time.Duration) ([]string, error) {
-	parts := []string{}
-	for _, query := range strings.Split(queries, querySeparator) {
-		part := []string{query}
-		if !includeArchived {
-			if strings.Contains(query, "archived:true") {
-				return []string{}, errors.New("archived:true requires --include-archived")
-			}
-			part = append(part, "archived:false")
-		} else if strings.Contains(query, "archived:false") {
-			return []string{}, errors.New("archived:false conflicts with --include-archived")
+func makeQuery(query string, includeArchived, includeClosed bool, minUpdated time.Duration) (string, error) {
+	parts := []string{query}
+	if !includeArchived {
+		if strings.Contains(query, "archived:true") {
+			return "", errors.New("archived:true requires --include-archived")
 		}
-		if !includeClosed {
-			if strings.Contains(query, "is:closed") {
-				return []string{}, errors.New("is:closed requires --include-closed")
-			}
-			part = append(part, "is:open")
-		} else if strings.Contains(query, "is:open") {
-			return []string{}, errors.New("is:open conflicts with --include-closed")
-		}
-		if minUpdated != 0 {
-			latest := time.Now().Add(-minUpdated)
-			part = append(part, "updated:<="+latest.Format(time.RFC3339))
-		}
-		parts = append(parts, strings.Join(part, " "))
+		parts = append(parts, "archived:false")
+	} else if strings.Contains(query, "archived:false") {
+		return "", errors.New("archived:false conflicts with --include-archived")
 	}
-	return parts, nil
+	if !includeClosed {
+		if strings.Contains(query, "is:closed") {
+			return "", errors.New("is:closed requires --include-closed")
+		}
+		parts = append(parts, "is:open")
+	} else if strings.Contains(query, "is:open") {
+		return "", errors.New("is:open conflicts with --include-closed")
+	}
+	if minUpdated != 0 {
+		latest := time.Now().Add(-minUpdated)
+		parts = append(parts, "updated:<="+latest.Format(time.RFC3339))
+	}
+	return strings.Join(parts, " "), nil
 }
 
 type client interface {
@@ -196,9 +192,13 @@ func main() {
 		log.Fatalf("Failed creating Github client: %v", err)
 	}
 
-	query, err := makeQuery(o.query, o.includeArchived, o.includeClosed, o.updated)
-	if err != nil {
-		log.Fatalf("Bad query %q: %v", o.query, err)
+	var query []string
+	for _, q := range strings.Split(o.query, querySeparator) {
+		part, err := makeQuery(q, o.includeArchived, o.includeClosed, o.updated)
+		if err != nil {
+			log.Fatalf("Bad query %q: %v", o.query, err)
+		}
+		query = append(query, part)
 	}
 	sort := ""
 	asc := false
