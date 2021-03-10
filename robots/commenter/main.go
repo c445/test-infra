@@ -67,8 +67,8 @@ func flagOptions() options {
 		endpoint: flagutil.NewStrings(github.DefaultAPIEndpoint),
 	}
 	flag.StringVar(&o.query, "query", "", "Comma-separated list of queries, see https://help.github.com/articles/searching-issues-and-pull-requests/")
-	flag.DurationVar(&o.updated, "updated", time.Duration(0), "Filter to issues unmodified for at least this long if set")
-	flag.DurationVar(&o.labelsUpdated, "labels-updated", time.Duration(0), "Filter to labels unmodified for at least this long if set")
+	flag.DurationVar(&o.updated, "updated", time.Duration(0), "Only list issues that have been unmodified for at least the given amount of time")
+	flag.DurationVar(&o.labelsUpdated, "labels-updated", time.Duration(0), "Only list issues where the labels have been unmodified for at least the given amount of time")
 	flag.BoolVar(&o.includeArchived, "include-archived", false, "Match archived issues if set")
 	flag.BoolVar(&o.includeClosed, "include-closed", false, "Match closed issues if set")
 	flag.BoolVar(&o.confirm, "confirm", false, "Mutate github if set")
