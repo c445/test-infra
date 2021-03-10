@@ -192,13 +192,13 @@ func main() {
 		log.Fatalf("Failed creating Github client: %v", err)
 	}
 
-	var query []string
+	var queries []string
 	for _, q := range strings.Split(o.query, querySeparator) {
-		part, err := makeQuery(q, o.includeArchived, o.includeClosed, o.updated)
+		query, err := makeQuery(q, o.includeArchived, o.includeClosed, o.updated)
 		if err != nil {
 			log.Fatalf("Bad query %q: %v", o.query, err)
 		}
-		query = append(query, part)
+		queries = append(queries, query)
 	}
 	sort := ""
 	asc := false
@@ -207,7 +207,7 @@ func main() {
 		asc = true
 	}
 	commenter := makeCommenter(o.comment, o.useTemplate)
-	if err := run(ctx, c, githubClient, query, sort, asc, o.random, commenter, o.ceiling, o.labelsUpdated); err != nil {
+	if err := run(ctx, c, githubClient, queries, sort, asc, o.random, commenter, o.ceiling, o.labelsUpdated); err != nil {
 		log.Fatalf("Failed run: %v", err)
 	}
 }
@@ -216,7 +216,7 @@ func createGithubClient(ctx context.Context, endpoint flagutil.Strings, tokenPat
 	log.Print("Create Github client")
 	tokenByte, err := ioutil.ReadFile(tokenPath)
 	if err != nil {
-		log.Fatalf("Failed reading token: %v", err)
+		return nil, fmt.Errorf("failed reading token from file %s: %v", tokenPath, err)
 	}
 	token := strings.TrimSuffix(string(tokenByte), "\n")
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
@@ -243,29 +243,36 @@ func run(ctx context.Context, c client, gh *github2.Client, queries []string, so
 	issueAlreadyHandled := map[int]bool{}
 	for _, query := range queries {
 		log.Printf("Searching: %s", query)
+		var dedupIssues []github.Issue
+
 		foundIssues, err := c.FindIssues(query, sort, asc)
 		if err != nil {
 			return fmt.Errorf("search failed: %v", err)
 		}
+
 		for _, foundIssue := range foundIssues {
 			if issueAlreadyHandled[foundIssue.ID] {
 				continue
 			}
 			issueAlreadyHandled[foundIssue.ID] = true
 
+			dedupIssues = append(dedupIssues, foundIssue)
+		}
+
+		for _, issue := range dedupIssues {
 			if labelsUpdated != 0 {
-				lastValidLabelsUpdate, err := getLastValidLabelsUpdate(ctx, gh, foundIssue, extractLabels(query, "label"), extractLabels(query, "-label"))
+				lastValidLabelsUpdate, err := getLastValidLabelsUpdate(ctx, gh, issue, extractLabels(query, "label"), extractLabels(query, "-label"))
 				if err != nil {
-					return fmt.Errorf("failed checking last label update time for issue %d: %v", foundIssue.ID, err)
+					return fmt.Errorf("failed checking last label update time for issue %d: %v", issue.ID, err)
 				}
 				if time.Now().Add(-labelsUpdated).Before(lastValidLabelsUpdate) {
 					continue
 				}
 			}
-
-			issues = append(issues, foundIssue)
+			issues = append(issues, issue)
 		}
 	}
+
 	var problems []string
 	log.Printf("Found %d matches", len(issues))
 	if random {
@@ -309,7 +316,7 @@ func run(ctx context.Context, c client, gh *github2.Client, queries []string, so
 	return nil
 }
 
-func getLastValidLabelsUpdate(ctx context.Context, client *github2.Client, issue github.Issue, goodLabels map[string]bool, badLabels map[string]bool) (time.Time, error) {
+func getLastValidLabelsUpdate(ctx context.Context, client *github2.Client, issue github.Issue, wantedLabels map[string]bool, unwantedLabels map[string]bool) (time.Time, error) {
 	org, repo, number, err := parseHTMLURL(issue.HTMLURL)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("error parsing HTML of PR %d: %v", issue.ID, err)
@@ -325,15 +332,15 @@ func getLastValidLabelsUpdate(ctx context.Context, client *github2.Client, issue
 			break
 		}
 		// loop all events, search for labels and check the create date for good labels
-		for _, v := range issueTimeline {
-			if v.Label != nil && *v.Event == "labeled" && goodLabels[*v.Label.Name] && v.CreatedAt.After(lastLabelDate) {
-				lastLabelDate = *v.CreatedAt
+		for _, event := range issueTimeline {
+			if event.Label != nil && *event.Event == "labeled" && wantedLabels[*event.Label.Name] && event.CreatedAt.After(lastLabelDate) {
+				lastLabelDate = *event.CreatedAt
 			}
 		}
 		// loop all events again, search for unlabeling and check the create date for bad labels
-		for _, v := range issueTimeline {
-			if v.Label != nil && *v.Event == "unlabeled" && badLabels[*v.Label.Name] && v.CreatedAt.After(lastLabelDate) {
-				lastLabelDate = *v.CreatedAt
+		for _, event := range issueTimeline {
+			if event.Label != nil && *event.Event == "unlabeled" && unwantedLabels[*event.Label.Name] && event.CreatedAt.After(lastLabelDate) {
+				lastLabelDate = *event.CreatedAt
 			}
 		}
 	}
