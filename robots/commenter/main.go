@@ -59,7 +59,6 @@ const (
 		.Issue.Assignees - list of assigned .Users
 		.Issue.Labels - list of applied labels (.Name)
 `
-	querySeparator = ","
 )
 
 func flagOptions() options {
@@ -193,7 +192,7 @@ func main() {
 	}
 
 	var queries []string
-	for _, q := range strings.Split(o.query, querySeparator) {
+	for _, q := range strings.Split(o.query, ",") {
 		query, err := makeQuery(q, o.includeArchived, o.includeClosed, o.updated)
 		if err != nil {
 			log.Fatalf("Bad query %q: %v", o.query, err)
