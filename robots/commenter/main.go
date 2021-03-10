@@ -68,7 +68,7 @@ func flagOptions() options {
 	}
 	flag.StringVar(&o.query, "query", "", "Comma-separated list of queries, see https://help.github.com/articles/searching-issues-and-pull-requests/")
 	flag.DurationVar(&o.updated, "updated", time.Duration(0), "Filter to issues unmodified for at least this long if set")
-	flag.DurationVar(&o.labelsUpdated, "labels-updated", time.Duration(0), "Labels of issues unmodified for at least this long if set")
+	flag.DurationVar(&o.labelsUpdated, "labels-updated", time.Duration(0), "Filter to labels unmodified for at least this long if set")
 	flag.BoolVar(&o.includeArchived, "include-archived", false, "Match archived issues if set")
 	flag.BoolVar(&o.includeClosed, "include-closed", false, "Match closed issues if set")
 	flag.BoolVar(&o.confirm, "confirm", false, "Mutate github if set")
@@ -187,7 +187,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	githubClient, err := createGithubClient(ctx, o.endpoint, o.token)
+	githubClient, err := newGithubClient(ctx, o.endpoint, o.token)
 	if err != nil {
 		log.Fatalf("Failed creating Github client: %v", err)
 	}
@@ -212,7 +212,7 @@ func main() {
 	}
 }
 
-func createGithubClient(ctx context.Context, endpoint flagutil.Strings, tokenPath string) (*github2.Client, error) {
+func newGithubClient(ctx context.Context, endpoint flagutil.Strings, tokenPath string) (*github2.Client, error) {
 	log.Print("Create Github client")
 	tokenByte, err := ioutil.ReadFile(tokenPath)
 	if err != nil {
