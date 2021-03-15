@@ -65,7 +65,8 @@ func flagOptions() options {
 	o := options{
 		endpoint: flagutil.NewStrings(github.DefaultAPIEndpoint),
 	}
-	flag.StringVar(&o.query, "query", "", "Comma-separated list of queries, see https://help.github.com/articles/searching-issues-and-pull-requests/")
+	flag.StringVar(&o.query, "query", "", "See https://help.github.com/articles/searching-issues-and-pull-requests/")
+	flag.StringVar(&o.queries, "queries", "", "Comma-separated list of queries")
 	flag.DurationVar(&o.updated, "updated", time.Duration(0), "Only list issues that have been unmodified for at least the given amount of time")
 	flag.DurationVar(&o.labelsUpdated, "labels-updated", time.Duration(0), "Only list issues where the labels have been unmodified for at least the given amount of time")
 	flag.BoolVar(&o.includeArchived, "include-archived", false, "Match archived issues if set")
@@ -97,6 +98,7 @@ type options struct {
 	includeClosed   bool
 	useTemplate     bool
 	query           string
+	queries         string
 	sort            string
 	endpoint        flagutil.Strings
 	graphqlEndpoint string
@@ -155,8 +157,8 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	o := flagOptions()
 
-	if o.query == "" {
-		log.Fatal("empty --query")
+	if o.query == "" && o.queries == "" {
+		log.Fatal("empty --query and --queries")
 	}
 	if o.token == "" {
 		log.Fatal("empty --token")
@@ -191,13 +193,16 @@ func main() {
 		log.Fatalf("Failed creating Github client: %v", err)
 	}
 
-	var queries []string
-	for _, q := range strings.Split(o.query, ",") {
-		query, err := makeQuery(q, o.includeArchived, o.includeClosed, o.updated)
-		if err != nil {
-			log.Fatalf("Bad query %q: %v", o.query, err)
+	queries := []string{o.query}
+	if o.query == "" {
+		queries = []string{}
+		for _, q := range strings.Split(o.queries, ",") {
+			query, err := makeQuery(q, o.includeArchived, o.includeClosed, o.updated)
+			if err != nil {
+				log.Fatalf("Bad query %q: %v", o.queries, err)
+			}
+			queries = append(queries, query)
 		}
-		queries = append(queries, query)
 	}
 	sort := ""
 	asc := false
