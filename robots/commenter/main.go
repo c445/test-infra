@@ -193,15 +193,17 @@ func main() {
 		log.Fatalf("Failed creating Github client: %v", err)
 	}
 
-	queries := []string{o.query}
-	if o.query == "" {
-		queries = []string{}
-		for _, q := range strings.Split(o.queries, ",") {
-			query, err := makeQuery(q, o.includeArchived, o.includeClosed, o.updated)
-			if err != nil {
-				log.Fatalf("Bad query %q: %v", o.queries, err)
-			}
-			queries = append(queries, query)
+	var queries []string
+	if o.query != "" {
+		queries = append(queries, o.query)
+	}
+	if o.queries != "" {
+		queries = strings.Split(o.queries, ",")
+	}
+	for i, query := range queries {
+		queries[i], err = makeQuery(query, o.includeArchived, o.includeClosed, o.updated)
+		if err != nil {
+			log.Fatalf("Bad query %q: %v", query, err)
 		}
 	}
 	sort := ""
