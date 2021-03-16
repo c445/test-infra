@@ -283,6 +283,7 @@ func run(ctx context.Context, c client, gh *github2.Client, queries []string, so
 					return fmt.Errorf("failed checking last label update time for issue %d: %v", issue.ID, err)
 				}
 				if time.Now().Add(-labelsUpdated).Before(lastValidLabelsUpdate) {
+					log.Printf("Skipping %s (%s), updated at: %s", issue.HTMLURL, issue.Title, lastValidLabelsUpdate)
 					continue
 				}
 			}
