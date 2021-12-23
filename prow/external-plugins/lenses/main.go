@@ -45,21 +45,17 @@ import (
 )
 
 type options struct {
-	port int
-
-	configPath    string
-	jobConfigPath string
-	pluginConfig  string
-
+	port                  int
+	configPath            string
+	jobConfigPath         string
+	pluginConfig          string
 	spyglassFilesLocation string
-
-	dryRun     bool
-	kubernetes prowflagutil.KubernetesOptions
-	storage    prowflagutil.StorageClientOptions
-
-	updatePeriod time.Duration
-
-	webhookSecretFile string
+	dryRun                bool
+	kubernetes            prowflagutil.KubernetesOptions
+	storage               prowflagutil.StorageClientOptions
+	updatePeriod          time.Duration
+	webhookSecretFile     string
+	tenantIDs             prowflagutil.Strings
 }
 
 func gatherOptions() options {
@@ -73,6 +69,7 @@ func gatherOptions() options {
 	fs.BoolVar(&o.dryRun, "dry-run", true, "Dry run for testing. Uses API tokens but does not mutate.")
 	fs.DurationVar(&o.updatePeriod, "update-period", time.Hour*24, "Period duration for periodic scans of all PRs.")
 	fs.StringVar(&o.webhookSecretFile, "hmac-secret-file", "/etc/webhook/hmac", "Path to the file containing the GitHub HMAC secret.")
+	fs.Var(&o.tenantIDs, "tenant-id", "The tenantID(s) used by the ProwJobs that should be displayed by this instance of Deck. This flag can be repeated.")
 
 	for _, group := range []flagutil.OptionGroup{&o.kubernetes, &o.storage} {
 		group.AddFlags(fs)
@@ -89,7 +86,7 @@ func main() {
 	logrus.SetFormatter(&logrus.JSONFormatter{})
 
 	configAgent := &config.Agent{}
-	if err := configAgent.Start(o.configPath, o.jobConfigPath); err != nil {
+	if err := configAgent.Start(o.configPath, o.jobConfigPath, []string{}, ""); err != nil {
 		logrus.WithError(err).Fatal("Error starting config agent.")
 	}
 
@@ -138,7 +135,7 @@ func main() {
 		logrus.Fatal("Timed out waiting for cachesync")
 	}
 
-	ja := jobs.NewJobAgent(context.Background(), &pjListingClientWrapper{mgr.GetClient()}, false, false, podLogClients, configAgent.Config)
+	ja := jobs.NewJobAgent(context.Background(), &pjListingClientWrapper{mgr.GetClient()}, false, false, o.tenantIDs.Strings(), podLogClients, configAgent.Config)
 	ja.Start()
 
 	ctx := context.TODO()

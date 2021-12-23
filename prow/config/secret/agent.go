@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package secret implements an agent to read and reload the secrets.
+// Package secret implements an Agent to read and reload the secrets.
 package secret
 
 import (
@@ -30,10 +30,10 @@ import (
 )
 
 // secretAgent is the singleton that loads secrets for us
-var secretAgent *agent
+var secretAgent *Agent
 
 func init() {
-	secretAgent = &agent{
+	secretAgent = &Agent{
 		RWMutex:           sync.RWMutex{},
 		secretsMap:        map[string][]byte{},
 		ReloadingCensorer: secretutil.NewCensorer(),
@@ -44,7 +44,7 @@ func init() {
 // Start creates goroutines to monitor the files that contain the secret value.
 // Additionally, Start wraps the current standard logger formatter with a
 // censoring formatter that removes secret occurrences from the logs.
-func (a *agent) Start(paths []string) error {
+func (a *Agent) Start(paths []string) error {
 	secretsMap, err := loadSecrets(paths)
 	if err != nil {
 		return err
@@ -64,7 +64,7 @@ func (a *agent) Start(paths []string) error {
 	return nil
 }
 
-// Add registers a new path to the agent.
+// Add registers a new path to the Agent.
 func Add(paths ...string) error {
 	secrets, err := loadSecrets(paths)
 	if err != nil {
@@ -95,15 +95,15 @@ func Censor(content []byte) []byte {
 	return secretAgent.Censor(content)
 }
 
-// agent watches a path and automatically loads the secrets stored.
-type agent struct {
+// Agent watches a path and automatically loads the secrets stored.
+type Agent struct {
 	sync.RWMutex
 	secretsMap map[string][]byte
 	*secretutil.ReloadingCensorer
 }
 
-// Add registers a new path to the agent.
-func (a *agent) Add(path string) error {
+// Add registers a new path to the Agent.
+func (a *Agent) Add(path string) error {
 	secret, err := loadSingleSecret(path)
 	if err != nil {
 		return err
@@ -119,7 +119,7 @@ func (a *agent) Add(path string) error {
 // reloadSecret will begin polling the secret file at the path. If the first load
 // fails, Start with return the error and abort. Future load failures will log
 // the failure message but continue attempting to load.
-func (a *agent) reloadSecret(secretPath string) {
+func (a *Agent) reloadSecret(secretPath string) {
 	var lastModTime time.Time
 	logger := logrus.NewEntry(logrus.StandardLogger())
 
@@ -153,14 +153,14 @@ func (a *agent) reloadSecret(secretPath string) {
 }
 
 // GetSecret returns the value of a secret stored in a map.
-func (a *agent) GetSecret(secretPath string) []byte {
+func (a *Agent) GetSecret(secretPath string) []byte {
 	a.RLock()
 	defer a.RUnlock()
 	return a.secretsMap[secretPath]
 }
 
 // setSecret sets a value in a map of secrets.
-func (a *agent) setSecret(secretPath string, secretValue []byte) {
+func (a *Agent) setSecret(secretPath string, secretValue []byte) {
 	a.Lock()
 	defer a.Unlock()
 	a.secretsMap[secretPath] = secretValue
@@ -168,7 +168,7 @@ func (a *agent) setSecret(secretPath string, secretValue []byte) {
 }
 
 // refreshCensorer should be called when the lock is held and the secrets map changes
-func (a *agent) refreshCensorer() {
+func (a *Agent) refreshCensorer() {
 	var secrets [][]byte
 	for _, value := range a.secretsMap {
 		secrets = append(secrets, value)
@@ -177,25 +177,25 @@ func (a *agent) refreshCensorer() {
 }
 
 // GetTokenGenerator returns a function that gets the value of a given secret.
-func (a *agent) GetTokenGenerator(secretPath string) func() []byte {
+func (a *Agent) GetTokenGenerator(secretPath string) func() []byte {
 	return func() []byte {
 		return a.GetSecret(secretPath)
 	}
 }
 
 // Censor replaces sensitive parts of the content with a placeholder.
-func (a *agent) Censor(content []byte) []byte {
+func (a *Agent) Censor(content []byte) []byte {
 	a.RLock()
 	defer a.RUnlock()
 	if a.ReloadingCensorer == nil {
-		// there's no constructor for an agent so we can't ensure that everyone is
+		// there's no constructor for an Agent so we can't ensure that everyone is
 		// trying to censor *after* actually loading a secret ...
 		return content
 	}
 	return secretutil.AdaptCensorer(a.ReloadingCensorer)(content)
 }
 
-func (a *agent) getSecrets() sets.String {
+func (a *Agent) getSecrets() sets.String {
 	a.RLock()
 	defer a.RUnlock()
 	secrets := sets.NewString()

@@ -1,8 +1,8 @@
 package(default_visibility = ["//visibility:public"])
 
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
 load("@io_bazel_rules_docker//container:image.bzl", "container_image")
-load("@npm_bazel_typescript//:index.bzl", "ts_library")
+load("//def:ts.bzl", "jasmine_node_test", "rollup_bundle", "ts_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
 load("//prow:def.bzl", "prow_image")
 
 NAME = "lenses"

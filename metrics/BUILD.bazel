@@ -37,7 +37,6 @@ py_binary(
     python_version = "PY3",
     deps = [
         requirement("certifi"),
-        requirement("chardet"),
         requirement("idna"),
         requirement("python-dateutil"),
         requirement("pytz"),
@@ -65,7 +64,6 @@ py_test(
     python_version = "PY3",
     deps = [
         requirement("certifi"),
-        requirement("chardet"),
         requirement("idna"),
         requirement("influxdb"),
         requirement("python-dateutil"),

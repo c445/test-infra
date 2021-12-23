@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
-
+	prowconfig "k8s.io/test-infra/prow/config"
 	"k8s.io/test-infra/prow/spyglass/api"
 )
 
@@ -22,7 +22,7 @@ var _ api.Lens = Lens{}
 type Lens struct{}
 
 // Header executes the "header" section of the template.
-func (lens Lens) Header(artifacts []api.Artifact, resourceDir string, config json.RawMessage) string {
+func (lens Lens) Header(artifacts []api.Artifact, resourceDir string, config json.RawMessage, spyglassConfig prowconfig.Spyglass) string {
 	return executeTemplate(resourceDir, "header", View{})
 }
 
@@ -59,7 +59,7 @@ type configElement struct {
 }
 
 // Body returns the <body> content
-func (lens Lens) Body(artifacts []api.Artifact, resourceDir string, data string, rawConfig json.RawMessage) string {
+func (lens Lens) Body(artifacts []api.Artifact, resourceDir string, data string, rawConfig json.RawMessage, spyglassConfig prowconfig.Spyglass) string {
 
 	var c config
 	if err := json.Unmarshal(rawConfig, &c); err != nil {
@@ -158,7 +158,7 @@ func matchLinkRegex(lines []byte, bld string) ([]Link, error) {
 }
 
 // Callback is unused
-func (lens Lens) Callback(artifacts []api.Artifact, resourceDir string, data string, rawConfig json.RawMessage) string {
+func (lens Lens) Callback(artifacts []api.Artifact, resourceDir string, data string, rawConfig json.RawMessage, spyglassConfig prowconfig.Spyglass) string {
 	return ""
 }
 

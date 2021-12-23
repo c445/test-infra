@@ -11,7 +11,6 @@ py_test(
     python_version = "PY3",
     deps = [
         requirement("certifi"),
-        requirement("chardet"),
         requirement("idna"),
         requirement("ruamel.yaml"),
         requirement("requests"),
@@ -65,7 +64,6 @@ py_test(
     python_version = "PY3",
     deps = [
         requirement("certifi"),
-        requirement("chardet"),
         requirement("idna"),
         requirement("parameterized"),
         requirement("ruamel.yaml"),
