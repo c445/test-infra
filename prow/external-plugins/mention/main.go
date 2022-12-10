@@ -95,7 +95,7 @@ func main() {
 	logrus.SetFormatter(&logrus.JSONFormatter{})
 
 	configAgent := &config.Agent{}
-	if err := configAgent.Start(o.configPath, o.jobConfigPath); err != nil {
+	if err := configAgent.Start(o.configPath, o.jobConfigPath, []string{}, "", nil); err != nil {
 		logrus.WithError(err).Fatal("Error starting config agent.")
 	}
 
@@ -106,23 +106,18 @@ func main() {
 	logrus.SetLevel(logLevel)
 	log := logrus.StandardLogger().WithField("plugin", plugin.PluginName)
 
-	secretAgent := &secret.Agent{}
-	if err := secretAgent.Start([]string{o.github.TokenPath, o.webhookSecretFile}); err != nil {
-		logrus.WithError(err).Fatal("Error starting secrets agent.")
-	}
-
 	pluginAgent := &plugins.ConfigAgent{}
-	if err := pluginAgent.Start(o.pluginConfig, false); err != nil {
+	if err := pluginAgent.Start(o.pluginConfig, []string{}, "", false, false); err != nil {
 		log.WithError(err).Fatalf("Error loading plugin config from %q.", o.pluginConfig)
 	}
 
-	githubClient, err := o.github.GitHubClient(secretAgent, o.dryRun)
+	githubClient, err := o.github.GitHubClient(o.dryRun)
 	if err != nil {
 		logrus.WithError(err).Fatal("Error getting GitHub client.")
 	}
 	githubClient.Throttle(360, 360)
 
-	gitClient, err := o.github.GitClient(secretAgent, o.dryRun)
+	gitClient, err := o.github.GitClient(o.dryRun)
 	if err != nil {
 		logrus.WithError(err).Fatal("Error getting Git client.")
 	}
@@ -133,8 +128,8 @@ func main() {
 	skipCollaborators := func(org, repo string) bool {
 		return pluginAgent.Config().SkipCollaborators(org, repo)
 	}
-	ownersDirBlacklist := func() config.OwnersDirBlacklist {
-		return configAgent.Config().OwnersDirBlacklist
+	ownersDirBlacklist := func() *config.OwnersDirDenylist {
+		return configAgent.Config().OwnersDirDenylist
 	}
 	resolver := func(org, repo string) ownersconfig.Filenames {
 		return pluginAgent.Config().OwnersFilenames(org, repo)
@@ -144,7 +139,7 @@ func main() {
 	server := &Server{
 		GitHubClient:   githubClient,
 		OwnersClient:   ownersClient,
-		tokenGenerator: secretAgent.GetTokenGenerator(o.webhookSecretFile),
+		tokenGenerator: secret.GetTokenGenerator(o.webhookSecretFile),
 		ghc:            githubClient,
 		log:            log,
 	}

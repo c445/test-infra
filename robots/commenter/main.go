@@ -214,7 +214,7 @@ func main() {
 		queries = strings.Split(o.queries, ",")
 	}
 	for i, query := range queries {
-		queries[i], err = makeQuery(query, o.includeArchived, o.includeClosed, o.updated)
+		queries[i], err = makeQuery(query, o.includeArchived, o.includeClosed, o.includeLocked, o.updated)
 		if err != nil {
 			log.Fatalf("Bad query %q: %v", query, err)
 		}
