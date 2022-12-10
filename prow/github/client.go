@@ -4971,12 +4971,12 @@ func (c *client) CreateCheckRun(org, repo string, checkRun CheckRun) error {
 	durationLogger := c.log("CreateCheckRun", org, repo, checkRun)
 	defer durationLogger()
 	_, err := c.request(&request{
-		accept:    "application/vnd.github.antiope-preview+json"
-		method:    http.MethodPost,
-		path:      fmt.Sprintf("/repos/%s/%s/commits/%s/check-runs", org, repo, ref),
-		org:       org,
+		accept:      "application/vnd.github.antiope-preview+json",
+		method:      http.MethodPost,
+		path:        fmt.Sprintf("/repos/%s/%s/check-runs", org, repo),
+		org:         org,
 		requestBody: &checkRun,
-		exitCodes: []int{200},
+		exitCodes:   []int{200},
 	}, nil)
 	if err != nil {
 		return err
