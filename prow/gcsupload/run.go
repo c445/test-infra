@@ -70,6 +70,13 @@ func (o Options) Run(spec *downwardapi.JobSpec, extra map[string]gcs.UploadFunc)
 	return nil
 }
 
+func prefixIfNeeded(prefix, key string) string {
+	if prefix == "" {
+		return key
+	}
+	return path.Join(prefix, key)
+}
+
 func (o Options) assembleTargets(spec *downwardapi.JobSpec, extra map[string]gcs.UploadFunc) (map[string]gcs.UploadFunc, error) {
 	jobBasePath, blobStoragePath, builder := PathsForJob(o.GCSConfiguration, spec, o.SubDir)
 
@@ -91,7 +98,7 @@ func (o Options) assembleTargets(spec *downwardapi.JobSpec, extra map[string]gcs
 			} else {
 				fullBasePath = fmt.Sprintf("%s/%s", o.Bucket, jobBasePath)
 			}
-			uploadTargets[alias] = gcs.DataUploadWithMetadata(strings.NewReader(fullBasePath), map[string]string{
+			uploadTargets[prefixIfNeeded(o.GCSConfiguration.PathPrefix, alias)] = gcs.DataUploadWithMetadata(strings.NewReader(fullBasePath), map[string]string{
 				"x-goog-meta-link": fullBasePath,
 			})
 		}
@@ -100,7 +107,7 @@ func (o Options) assembleTargets(spec *downwardapi.JobSpec, extra map[string]gcs
 			for _, latestBuild := range latestBuilds {
 				dir, filename := path.Split(latestBuild)
 				metadataFromFileName, writerOptions := gcs.WriterOptionsFromFileName(filename)
-				uploadTargets[path.Join(dir, metadataFromFileName)] = gcs.DataUploadWithOptions(strings.NewReader(spec.BuildID), writerOptions)
+				uploadTargets[prefixIfNeeded(o.GCSConfiguration.PathPrefix, path.Join(dir, metadataFromFileName))] = gcs.DataUploadWithOptions(strings.NewReader(spec.BuildID), writerOptions)
 			}
 		}
 	} else {
@@ -136,9 +143,10 @@ func (o Options) assembleTargets(spec *downwardapi.JobSpec, extra map[string]gcs
 }
 
 // PathsForJob determines the following for a job:
-//  - path in blob storage under the bucket where job artifacts will be uploaded for:
-//     - the job
-//     - this specific run of the job (if any subdir is present)
+//   - path in blob storage under the bucket where job artifacts will be uploaded for:
+//   - the job
+//   - this specific run of the job (if any subdir is present)
+//
 // The builder for the job is also returned for use in other path resolution.
 func PathsForJob(options *prowapi.GCSConfiguration, spec *downwardapi.JobSpec, subdir string) (string, string, gcs.RepoPathBuilder) {
 	builder := builderForStrategy(options.PathStrategy, options.DefaultOrg, options.DefaultRepo)
