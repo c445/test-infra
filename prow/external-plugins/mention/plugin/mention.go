@@ -71,7 +71,22 @@ func HandlePullRequestEvent(log *logrus.Entry, githubClient github.Client, owner
 		return fmt.Errorf("error loading RepoOwners: %v", err)
 	}
 
-	return handle(githubClient, oc, log, pre)
+	ocWrapper := ownersClientWrapper{oc}
+
+	return handle(githubClient, ocWrapper, log, pre)
+}
+
+type ownersClientWrapper struct {
+	oc repoowners.RepoOwner
+}
+
+func (w ownersClientWrapper) FindLabelsForFile(path string) sets.String {
+	labels := w.oc.FindLabelsForFile(path)
+	labelList := make([]string, 0, labels.Len())
+	for label := range labels {
+		labelList = append(labelList, label)
+	}
+	return sets.NewString(labelList...)
 }
 
 func handle(ghc githubClient, oc ownersClient, log *logrus.Entry, pre *github.PullRequestEvent) error {
