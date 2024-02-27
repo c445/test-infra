@@ -40,6 +40,8 @@ images:
   - dir: prow/external-plugins/needs-rebase
   - dir: prow/external-plugins/cherrypicker
   - dir: prow/external-plugins/refresh
+  - dir: prow/external-plugins/mention
+  - dir: prow/external-plugins/lenses
   - dir: ghproxy
   - dir: label_sync
   - dir: robots/commenter

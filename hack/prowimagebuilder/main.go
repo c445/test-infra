@@ -54,9 +54,9 @@ const (
 var (
 	rootDir     string
 	otherArches = []string{
-		"linux/arm64",
-		"linux/s390x",
-		"linux/ppc64le",
+		// "linux/arm64",
+		// "linux/s390x",
+		// "linux/ppc64le",
 	}
 	defaultTags = []string{
 		"latest",

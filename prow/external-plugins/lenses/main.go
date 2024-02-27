@@ -89,7 +89,7 @@ func main() {
 	logrus.SetFormatter(&logrus.JSONFormatter{})
 
 	configAgent := &config.Agent{}
-	if err := configAgent.Start(o.configPath, o.jobConfigPath); err != nil {
+	if err := configAgent.Start(o.configPath, o.jobConfigPath, nil, "", nil); err != nil {
 		logrus.WithError(err).Fatal("Error starting config agent.")
 	}
 
@@ -138,7 +138,7 @@ func main() {
 		logrus.Fatal("Timed out waiting for cachesync")
 	}
 
-	ja := jobs.NewJobAgent(context.Background(), &pjListingClientWrapper{mgr.GetClient()}, false, false, podLogClients, configAgent.Config)
+	ja := jobs.NewJobAgent(context.Background(), &pjListingClientWrapper{mgr.GetClient()}, false, false, []string{}, podLogClients, configAgent.Config)
 	ja.Start()
 
 	ctx := context.TODO()

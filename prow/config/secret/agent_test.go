@@ -51,7 +51,7 @@ func TestCensoringFormatter(t *testing.T) {
 	defer secret2.Close()
 	defer os.Remove(secret2.Name())
 
-	agent := agent{}
+	agent := Agent{}
 	if err = agent.Start([]string{secret1.Name(), secret2.Name()}); err != nil {
 		t.Fatalf("failed to start a secret agent: %v", err)
 	}
